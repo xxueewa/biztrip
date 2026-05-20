@@ -1,17 +1,17 @@
 # Figma Template App
 
-SwiftUI iOS prototype generated from a Figma iPhone flow. The app presents a swipeable two-screen experience with native recording controls and FastAPI chat integration.
+SwiftUI iOS prototype generated from a Figma iPhone flow. The app streams microphone audio to a websocket backend and plays response audio streamed back from that connection.
 
 ## Features
 
 - SwiftUI implementation of the Figma iPhone layout
-- Swipeable page flow using `TabView`
 - Native microphone recording button states
-- FastAPI request integration for:
-  - `POST http://127.0.0.1:8000/chat/transcribe`
-  - `POST http://127.0.0.1:8000/chat/text`
-- Streaming text response support for the response screen
-- Local development HTTP networking and microphone permission configured in `Info.plist`
+- WebSocket session at `ws://127.0.0.1:8000/ws/conversation`
+- Binary websocket frames for raw PCM audio:
+  - app to backend: `pcm_s16le`, mono, 16 kHz microphone chunks
+  - backend to app: `pcm_s16le`, mono response chunks
+- JSON websocket control frames for session state, transcript text, agent status, and audio boundaries
+- Live response audio playback with `AVAudioEngine`
 
 ## Project Structure
 
@@ -27,36 +27,56 @@ FigmaTemplateApp.xcodeproj/
 
 - Xcode 15 or newer
 - iOS 17 deployment target
-- FastAPI backend running locally on port `8000`
+- A websocket backend that implements the app contract below
 
 ## Running The App
 
 1. Open `FigmaTemplateApp.xcodeproj` in Xcode.
 2. Select an iPhone simulator.
-3. Run with `Cmd + R`.
-4. Allow microphone access when prompted.
+3. Start your websocket backend on `ws://127.0.0.1:8000/ws/conversation`.
+4. Run the app with `Cmd + R`.
+5. Allow microphone access when prompted.
+6. Tap the mic, speak, then tap again to stop and hear the streamed response.
 
-For local backend access from the iOS Simulator, `http://127.0.0.1:8000` points to your Mac.
+For local backend access from the iOS Simulator, `127.0.0.1` points to your Mac.
 
-## Backend Contract
+## WebSocket Contract
 
-Both endpoints currently receive the same JSON body:
+The app sends a JSON frame before audio:
 
 ```json
 {
+  "type": "start_audio",
+  "thread_id": "3cfbf39d-8502-4aa1-bff5-f647b788cf89",
+  "sample_rate": 16000,
+  "encoding": "pcm_s16le"
+}
+```
+
+It then sends binary PCM frames while recording. When the user stops, it sends:
+
+```json
+{
+  "type": "stop_audio",
   "thread_id": "3cfbf39d-8502-4aa1-bff5-f647b788cf89"
 }
 ```
 
-The `/chat/text` endpoint may return plain streamed text, Server-Sent Events lines such as `data: ...`, or JSON chunks with one of these fields:
+The backend may respond with these JSON frame types:
 
 ```text
-answer, response, text, content, delta, message
+recording_started
+speech_end
+transcript
+agent_started
+response_text
+audio_start
+audio_end
+done
+error
 ```
 
-## Notes
-
-The app records audio locally to drive the recording UI, but the current sample API payload only sends `thread_id`. If the backend later expects uploaded audio, update `ChatAPI` to send multipart form data.
+Binary frames received after `audio_start` are treated as response PCM audio for playback. The app uses the `sample_rate` from the `audio_start` JSON frame, defaulting to 24 kHz when it is omitted.
 
 ## License
 

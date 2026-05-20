@@ -15,10 +15,6 @@ private struct FlowPager: View {
 
     var body: some View {
         TabView {
-//            PhoneScreen {
-//                SignInScreen()
-//            }
-
             PhoneScreen {
                 CenterRecordingScreen(model: model)
             }
@@ -86,40 +82,28 @@ private struct StatusChrome: View {
     }
 }
 
-private struct SignInScreen: View {
-    var body: some View {
-        ZStack {
-            Rectangle()
-                .fill(Color(red: 0.851, green: 0.851, blue: 0.851))
-                .frame(width: 289, height: 33)
-                .position(x: 219.5, y: 238.5)
-
-            Text("Sign In with SSO")
-                .font(.system(size: 17, weight: .medium))
-                .foregroundStyle(.black)
-                .frame(width: 136, height: 20)
-                .position(x: 220, y: 289)
-        }
-        .frame(width: 440, height: 956)
-    }
-}
-
 private struct CenterRecordingScreen: View {
     @ObservedObject var model: ConversationModel
 
     var body: some View {
         ZStack {
-            if !model.centerStatusText.isEmpty {
+            VStack(spacing: 12) {
                 Text(model.centerStatusText)
                     .font(.system(size: 17, weight: .medium))
                     .multilineTextAlignment(.center)
                     .foregroundStyle(.black.opacity(0.72))
                     .frame(width: 320)
-                    .position(x: 220, y: 570)
-            }
 
-            RecordingButton(size: 124, isRecording: model.isRecordingTranscription) {
-                model.toggleTranscriptionRecording()
+                Text(model.connectionText)
+                    .font(.system(size: 13, weight: .medium))
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(.black.opacity(0.42))
+                    .frame(width: 320)
+            }
+            .position(x: 220, y: 585)
+
+            RecordingButton(size: 124, isRecording: model.isRecording) {
+                model.toggleRecording()
             }
             .position(x: 220, y: 456)
         }
@@ -146,10 +130,10 @@ private struct ResponseScreen: View {
                 .frame(width: 303, height: 357)
                 .position(x: 220.5, y: 363.5)
 
-            RecordingButton(size: 65, isRecording: model.isRecordingTextStream) {
-                model.toggleTextStreamRecording()
+            RecordingButton(size: 65, isRecording: model.isRecording) {
+                model.toggleRecording()
             }
-                .position(x: 219.5, y: 880.5)
+            .position(x: 219.5, y: 880.5)
         }
         .frame(width: 440, height: 956)
     }
@@ -186,92 +170,245 @@ private struct RecordingButton: View {
 
 @MainActor
 private final class ConversationModel: ObservableObject {
-    private let api = ChatAPI()
-    private let recorder = AudioRecorder()
-
-    @Published var isRecordingTranscription = false
-    @Published var isRecordingTextStream = false
-    @Published var promptText = "Hi Liam, can you search in our database and provide the brief that I could use in my next meeting?"
-    @Published var responseText = "Sure, the following is the summarized company info...."
-    @Published var centerStatusText = ""
-
     private let threadID = "3cfbf39d-8502-4aa1-bff5-f647b788cf89"
+    private let socketURL = URL(string: "ws://127.0.0.1:8000/ws/conversation")!
+    private var client: ConversationSocketClient?
 
-    func toggleTranscriptionRecording() {
+    @Published var isRecording = false
+    @Published var promptText = "Tap the mic and speak. Audio streams to the Python websocket backend as PCM16 frames."
+    @Published var responseText = "The dummy backend will answer with generated audio and text after you stop recording."
+    @Published var centerStatusText = "Ready"
+    @Published var connectionText = "ws://127.0.0.1:8000/ws/conversation"
+
+    func toggleRecording() {
         Task {
-            if isRecordingTranscription {
-                await stopTranscriptionRecording()
+            if isRecording {
+                await stopRecording()
             } else {
-                await startTranscriptionRecording()
+                await startRecording()
             }
         }
     }
 
-    func toggleTextStreamRecording() {
-        Task {
-            if isRecordingTextStream {
-                await stopTextStreamRecording()
-            } else {
-                await startTextStreamRecording()
-            }
-        }
-    }
+    private func startRecording() async {
+        let client = ConversationSocketClient(url: socketURL, threadID: threadID)
+        self.client = client
+        centerStatusText = "Connecting..."
+        responseText = "Listening..."
 
-    private func startTranscriptionRecording() async {
         do {
-            try await recorder.startRecording()
-            isRecordingTranscription = true
+            try await client.start { [weak self] event in
+                Task { @MainActor in
+                    self?.handle(event)
+                }
+            }
+            isRecording = true
             centerStatusText = "Recording..."
+            connectionText = "Streaming microphone audio"
         } catch {
-            centerStatusText = "Microphone unavailable"
+            isRecording = false
+            centerStatusText = "Connection failed"
+            connectionText = socketURL.absoluteString
             responseText = error.localizedDescription
+            self.client = nil
         }
     }
 
-    private func stopTranscriptionRecording() async {
-        recorder.stopRecording()
-        isRecordingTranscription = false
-        centerStatusText = "Sending..."
+    private func stopRecording() async {
+        isRecording = false
+        centerStatusText = "Processing..."
+        connectionText = "Waiting for agent response"
 
         do {
-            let answer = try await api.transcribe(threadID: threadID)
-            responseText = answer.isEmpty ? responseText : answer
+            try await client?.stopRecording()
+        } catch {
+            centerStatusText = "Stop failed"
+            responseText = error.localizedDescription
+            await client?.close()
+            client = nil
+        }
+    }
+
+    private func handle(_ event: ConversationEvent) {
+        switch event {
+        case .connected:
+            connectionText = "Connected"
+        case .recordingStarted:
+            centerStatusText = "Recording..."
+        case .speechEnded:
+            centerStatusText = "Sentence detected"
+        case .transcript(let text):
+            promptText = text
+        case .agentStarted:
+            centerStatusText = "Agent is thinking..."
+        case .responseText(let text):
+            responseText = text
+        case .audioStarted:
+            centerStatusText = "Playing response..."
+        case .audioEnded:
             centerStatusText = "Response ready"
-        } catch {
-            centerStatusText = "Request failed"
-            responseText = error.localizedDescription
-        }
-    }
-
-    private func startTextStreamRecording() async {
-        do {
-            try await recorder.startRecording()
-            isRecordingTextStream = true
-            responseText = "Recording..."
-        } catch {
-            responseText = error.localizedDescription
-        }
-    }
-
-    private func stopTextStreamRecording() async {
-        recorder.stopRecording()
-        isRecordingTextStream = false
-        responseText = ""
-
-        do {
-            for try await chunk in api.streamText(threadID: threadID) {
-                responseText += chunk
-            }
-        } catch {
-            responseText = error.localizedDescription
+            connectionText = "Ready for another turn"
+        case .closed:
+            isRecording = false
+            client = nil
+        case .error(let message):
+            isRecording = false
+            centerStatusText = "WebSocket error"
+            responseText = message
+            client = nil
         }
     }
 }
 
-private final class AudioRecorder: NSObject {
-    private var recorder: AVAudioRecorder?
+private enum ConversationEvent {
+    case connected
+    case recordingStarted
+    case speechEnded
+    case transcript(String)
+    case agentStarted
+    case responseText(String)
+    case audioStarted
+    case audioEnded
+    case closed
+    case error(String)
+}
 
-    func startRecording() async throws {
+private final class ConversationSocketClient {
+    private let url: URL
+    private let threadID: String
+    private let session: URLSession
+    private let recorder = PCMRecorder(sampleRate: 16_000)
+    private let player = PCMPlayer()
+
+    private var task: URLSessionWebSocketTask?
+    private var receiveTask: Task<Void, Never>?
+    private var eventHandler: ((ConversationEvent) -> Void)?
+
+    init(url: URL, threadID: String) {
+        self.url = url
+        self.threadID = threadID
+        self.session = URLSession(configuration: .default)
+    }
+
+    func start(onEvent: @escaping (ConversationEvent) -> Void) async throws {
+        eventHandler = onEvent
+
+        let task = session.webSocketTask(with: url)
+        self.task = task
+        task.resume()
+        onEvent(.connected)
+
+        receiveTask = Task { [weak self] in
+            await self?.receiveLoop()
+        }
+
+        try await sendJSON(SocketControl(type: "start_audio", threadID: threadID, sampleRate: recorder.sampleRate, encoding: "pcm_s16le"))
+        try await recorder.start { [weak self] data in
+            guard let task = self?.task else { return }
+            let eventHandler = self?.eventHandler
+            task.send(.data(data)) { error in
+                if let error {
+                    eventHandler?(.error(error.localizedDescription))
+                }
+            }
+        }
+        onEvent(.recordingStarted)
+    }
+
+    func stopRecording() async throws {
+        recorder.stop()
+        try await sendJSON(SocketControl(type: "stop_audio", threadID: threadID, sampleRate: nil, encoding: nil))
+    }
+
+    func close() async {
+        recorder.stop()
+        receiveTask?.cancel()
+        task?.cancel(with: .normalClosure, reason: nil)
+        task = nil
+        await player.stop()
+    }
+
+    private func receiveLoop() async {
+        while !Task.isCancelled {
+            guard let task else { return }
+
+            do {
+                let message = try await task.receive()
+                switch message {
+                case .string(let text):
+                    await handleText(text)
+                case .data(let data):
+                    await player.enqueuePCM16(data)
+                @unknown default:
+                    break
+                }
+            } catch {
+                if !Task.isCancelled {
+                    eventHandler?(.error(error.localizedDescription))
+                }
+                return
+            }
+        }
+    }
+
+    private func handleText(_ text: String) async {
+        guard let data = text.data(using: .utf8),
+              let message = try? JSONDecoder().decode(SocketMessage.self, from: data) else {
+            eventHandler?(.responseText(text))
+            return
+        }
+
+        switch message.type {
+        case "speech_end":
+            eventHandler?(.speechEnded)
+        case "transcript":
+            eventHandler?(.transcript(message.text ?? ""))
+        case "agent_started":
+            eventHandler?(.agentStarted)
+        case "response_text":
+            eventHandler?(.responseText(message.text ?? ""))
+        case "audio_start":
+            let sampleRate = Double(message.sampleRate ?? 24_000)
+            do {
+                try await player.start(sampleRate: sampleRate)
+                eventHandler?(.audioStarted)
+            } catch {
+                eventHandler?(.error(error.localizedDescription))
+            }
+        case "audio_end":
+            eventHandler?(.audioEnded)
+        case "done":
+            eventHandler?(.closed)
+            await close()
+        case "error":
+            eventHandler?(.error(message.message ?? "Server error"))
+            await close()
+        default:
+            break
+        }
+    }
+
+    private func sendJSON<T: Encodable>(_ value: T) async throws {
+        let data = try JSONEncoder().encode(value)
+        guard let text = String(data: data, encoding: .utf8) else {
+            throw SocketClientError.invalidJSON
+        }
+        try await task?.send(.string(text))
+    }
+}
+
+private final class PCMRecorder {
+    let sampleRate: Double
+
+    private let engine = AVAudioEngine()
+    private var converter: AVAudioConverter?
+    private var outputFormat: AVAudioFormat?
+
+    init(sampleRate: Double) {
+        self.sampleRate = sampleRate
+    }
+
+    func start(onPCM: @escaping (Data) -> Void) async throws {
         let session = AVAudioSession.sharedInstance()
         let hasPermission = await requestRecordPermission(session: session)
 
@@ -279,31 +416,70 @@ private final class AudioRecorder: NSObject {
             throw RecordingError.permissionDenied
         }
 
-        let outputURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("latest-recording")
-            .appendingPathExtension("m4a")
-
-        try? FileManager.default.removeItem(at: outputURL)
         try session.setCategory(.playAndRecord, mode: .spokenAudio, options: [.defaultToSpeaker, .allowBluetoothHFP])
+        try session.setPreferredSampleRate(sampleRate)
+        try session.setPreferredIOBufferDuration(0.02)
         try session.setActive(true)
 
-        let settings: [String: Any] = [
-            AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
-            AVSampleRateKey: 44_100,
-            AVNumberOfChannelsKey: 1,
-            AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
-        ]
+        let input = engine.inputNode
+        let inputFormat = input.outputFormat(forBus: 0)
+        guard let outputFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: sampleRate, channels: 1, interleaved: false),
+              let converter = AVAudioConverter(from: inputFormat, to: outputFormat) else {
+            throw RecordingError.unsupportedFormat
+        }
 
-        let recorder = try AVAudioRecorder(url: outputURL, settings: settings)
-        recorder.prepareToRecord()
-        recorder.record()
-        self.recorder = recorder
+        self.converter = converter
+        self.outputFormat = outputFormat
+
+        input.removeTap(onBus: 0)
+        input.installTap(onBus: 0, bufferSize: 1024, format: inputFormat) { [weak self] buffer, _ in
+            guard let self,
+                  let converter = self.converter,
+                  let outputFormat = self.outputFormat else { return }
+
+            let ratio = outputFormat.sampleRate / buffer.format.sampleRate
+            let frameCapacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio) + 8
+            guard let convertedBuffer = AVAudioPCMBuffer(pcmFormat: outputFormat, frameCapacity: frameCapacity) else { return }
+
+            var didProvideInput = false
+            var conversionError: NSError?
+            converter.convert(to: convertedBuffer, error: &conversionError) { _, status in
+                if didProvideInput {
+                    status.pointee = .noDataNow
+                    return nil
+                }
+
+                didProvideInput = true
+                status.pointee = .haveData
+                return buffer
+            }
+
+            guard conversionError == nil, convertedBuffer.frameLength > 0 else { return }
+            onPCM(Self.floatBufferToPCM16(convertedBuffer))
+        }
+
+        engine.prepare()
+        try engine.start()
     }
 
-    func stopRecording() {
-        recorder?.stop()
-        recorder = nil
+    func stop() {
+        engine.inputNode.removeTap(onBus: 0)
+        engine.stop()
+        converter = nil
+        outputFormat = nil
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+    }
+
+    private static func floatBufferToPCM16(_ buffer: AVAudioPCMBuffer) -> Data {
+        guard let channelData = buffer.floatChannelData?[0] else { return Data() }
+
+        var data = Data(capacity: Int(buffer.frameLength) * MemoryLayout<Int16>.size)
+        for index in 0..<Int(buffer.frameLength) {
+            let sample = max(-1, min(1, channelData[index]))
+            var intSample = Int16(sample * Float(Int16.max)).littleEndian
+            withUnsafeBytes(of: &intSample) { data.append(contentsOf: $0) }
+        }
+        return data
     }
 
     private func requestRecordPermission(session: AVAudioSession) async -> Bool {
@@ -321,132 +497,127 @@ private final class AudioRecorder: NSObject {
     }
 }
 
-private enum RecordingError: LocalizedError {
-    case permissionDenied
+private actor PCMPlayer {
+    private let engine = AVAudioEngine()
+    private let playerNode = AVAudioPlayerNode()
+    private var format: AVAudioFormat?
+    private var isPrepared = false
+    private var nodeAttached = false
 
-    var errorDescription: String? {
-        "Microphone permission is required to record."
+    func start(sampleRate: Double) throws {
+        let session = AVAudioSession.sharedInstance()
+        try session.setCategory(.playAndRecord, mode: .spokenAudio, options: [.defaultToSpeaker, .allowBluetoothHFP])
+        try session.setActive(true)
+
+        if !nodeAttached {
+            engine.attach(playerNode)
+            nodeAttached = true
+        }
+
+        guard let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: sampleRate, channels: 1, interleaved: false) else {
+            throw PlaybackError.unsupportedFormat
+        }
+
+        if self.format?.sampleRate != format.sampleRate || !isPrepared {
+            engine.disconnectNodeOutput(playerNode)
+            engine.connect(playerNode, to: engine.mainMixerNode, format: format)
+            self.format = format
+        }
+
+        if !engine.isRunning {
+            engine.prepare()
+            try engine.start()
+        }
+
+        if !playerNode.isPlaying {
+            playerNode.play()
+        }
+
+        isPrepared = true
     }
-}
 
-private struct ChatAPI {
-    private let baseURL = URL(string: "http://127.0.0.1:8000")!
+    func enqueuePCM16(_ data: Data) {
+        guard let format, isPrepared, !data.isEmpty else { return }
 
-    func transcribe(threadID: String) async throws -> String {
-        let data = try await sendJSON(path: "/chat/transcribe", threadID: threadID)
-        return parseResponseText(from: data)
-    }
+        let sampleCount = data.count / MemoryLayout<Int16>.size
+        guard sampleCount > 0,
+              let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(sampleCount)) else { return }
 
-    func streamText(threadID: String) -> AsyncThrowingStream<String, Error> {
-        AsyncThrowingStream { continuation in
-            Task {
-                do {
-                    var request = makeRequest(path: "/chat/text", threadID: threadID)
-                    request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+        buffer.frameLength = AVAudioFrameCount(sampleCount)
+        guard let samples = buffer.floatChannelData?[0] else { return }
 
-                    let (bytes, response) = try await URLSession.shared.bytes(for: request)
-                    try validate(response)
-
-                    for try await line in bytes.lines {
-                        let chunk = parseStreamLine(line)
-                        if !chunk.isEmpty {
-                            continuation.yield(chunk)
-                        }
-                    }
-
-                    continuation.finish()
-                } catch {
-                    continuation.finish(throwing: error)
-                }
+        data.withUnsafeBytes { rawBuffer in
+            let intSamples = rawBuffer.bindMemory(to: Int16.self)
+            for index in 0..<sampleCount {
+                samples[index] = Float(Int16(littleEndian: intSamples[index])) / Float(Int16.max)
             }
         }
+
+        playerNode.scheduleBuffer(buffer, completionHandler: nil)
     }
 
-    private func sendJSON(path: String, threadID: String) async throws -> Data {
-        let request = makeRequest(path: path, threadID: threadID)
-        let (data, response) = try await URLSession.shared.data(for: request)
-        try validate(response)
-        return data
-    }
-
-    private func makeRequest(path: String, threadID: String) -> URLRequest {
-        var request = URLRequest(url: baseURL.appending(path: path))
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try? JSONEncoder().encode(ChatRequest(threadID: threadID))
-        return request
-    }
-
-    private func validate(_ response: URLResponse) throws {
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw APIError.invalidResponse
-        }
-
-        guard 200..<300 ~= httpResponse.statusCode else {
-            throw APIError.httpStatus(httpResponse.statusCode)
-        }
-    }
-
-    private func parseResponseText(from data: Data) -> String {
-        if let payload = try? JSONDecoder().decode(ChatResponse.self, from: data) {
-            return payload.bestText
-        }
-
-        return String(data: data, encoding: .utf8) ?? ""
-    }
-
-    private func parseStreamLine(_ line: String) -> String {
-        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        guard !trimmed.isEmpty, trimmed != "data: [DONE]", trimmed != "[DONE]" else {
-            return ""
-        }
-
-        let payload = trimmed.hasPrefix("data:")
-            ? String(trimmed.dropFirst(5)).trimmingCharacters(in: .whitespaces)
-            : trimmed
-
-        if let data = payload.data(using: .utf8),
-           let decoded = try? JSONDecoder().decode(ChatResponse.self, from: data) {
-            return decoded.bestText
-        }
-
-        return payload
+    func stop() {
+        playerNode.stop()
+        engine.stop()
+        isPrepared = false
     }
 }
 
-private struct ChatRequest: Encodable {
+private struct SocketControl: Encodable {
+    let type: String
     let threadID: String
+    let sampleRate: Double?
+    let encoding: String?
 
     enum CodingKeys: String, CodingKey {
+        case type
         case threadID = "thread_id"
+        case sampleRate = "sample_rate"
+        case encoding
     }
 }
 
-private struct ChatResponse: Decodable {
-    let answer: String?
-    let response: String?
+private struct SocketMessage: Decodable {
+    let type: String
     let text: String?
-    let content: String?
-    let delta: String?
     let message: String?
+    let sampleRate: Int?
 
-    var bestText: String {
-        answer ?? response ?? text ?? content ?? delta ?? message ?? ""
+    enum CodingKeys: String, CodingKey {
+        case type
+        case text
+        case message
+        case sampleRate = "sample_rate"
     }
 }
 
-private enum APIError: LocalizedError {
-    case invalidResponse
-    case httpStatus(Int)
+private enum RecordingError: LocalizedError {
+    case permissionDenied
+    case unsupportedFormat
 
     var errorDescription: String? {
         switch self {
-        case .invalidResponse:
-            return "The server returned an invalid response."
-        case .httpStatus(let status):
-            return "The server returned HTTP \(status)."
+        case .permissionDenied:
+            return "Microphone permission is required to record."
+        case .unsupportedFormat:
+            return "The microphone audio format is not supported."
         }
+    }
+}
+
+private enum PlaybackError: LocalizedError {
+    case unsupportedFormat
+
+    var errorDescription: String? {
+        "The response audio format is not supported."
+    }
+}
+
+private enum SocketClientError: LocalizedError {
+    case invalidJSON
+
+    var errorDescription: String? {
+        "Could not encode the websocket control message."
     }
 }
 

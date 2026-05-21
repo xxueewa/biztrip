@@ -10,6 +10,7 @@ SwiftUI iOS prototype generated from a Figma iPhone flow. The app streams microp
 - Binary websocket frames for raw PCM audio:
   - app to backend: `pcm_s16le`, mono, 16 kHz microphone chunks
   - backend to app: `pcm_s16le`, mono response chunks
+- Debug copy of each microphone recording saved to the app temp directory as `.pcm`
 - JSON websocket control frames for session state, transcript text, agent status, and audio boundaries
 - Live response audio playback with `AVAudioEngine`
 
@@ -39,6 +40,8 @@ FigmaTemplateApp.xcodeproj/
 6. Tap the mic, speak, then tap again to stop and hear the streamed response.
 
 For local backend access from the iOS Simulator, `127.0.0.1` points to your Mac.
+
+Each recording is also written to the app sandbox temp directory as raw PCM16 mono 16 kHz audio. The app prints the full temp file path to the Xcode console and shows it in the status text after recording stops.
 
 ## WebSocket Contract
 

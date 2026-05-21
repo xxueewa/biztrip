@@ -171,14 +171,14 @@ private struct RecordingButton: View {
 @MainActor
 private final class ConversationModel: ObservableObject {
     private let threadID = "3cfbf39d-8502-4aa1-bff5-f647b788cf89"
-    private let socketURL = URL(string: "ws://127.0.0.1:8000/ws/conversation")!
+    private let socketURL = URL(string: "ws://127.0.0.1:8000/chat/ws/audio/debug")!
     private var client: ConversationSocketClient?
 
     @Published var isRecording = false
     @Published var promptText = "Tap the mic and speak. Audio streams to the Python websocket backend as PCM16 frames."
     @Published var responseText = "The dummy backend will answer with generated audio and text after you stop recording."
     @Published var centerStatusText = "Ready"
-    @Published var connectionText = "ws://127.0.0.1:8000/ws/conversation"
+    @Published var connectionText = "ws://127.0.0.1:8000/chat/ws/audio/debug"
 
     func toggleRecording() {
         Task {
@@ -248,6 +248,8 @@ private final class ConversationModel: ObservableObject {
         case .audioEnded:
             centerStatusText = "Response ready"
             connectionText = "Ready for another turn"
+        case .recordingSaved(let path):
+            connectionText = "Saved recording: \(path)"
         case .closed:
             isRecording = false
             client = nil
@@ -269,6 +271,7 @@ private enum ConversationEvent {
     case responseText(String)
     case audioStarted
     case audioEnded
+    case recordingSaved(String)
     case closed
     case error(String)
 }
@@ -397,12 +400,89 @@ private final class ConversationSocketClient {
     }
 }
 
+private final class SimpleRecorder {
+    let sampleRate: Double
+    
+    let engine = AVAudioEngine()
+    private var fileHandle: FileHandle?
+    private(set) var outputURL: URL?
+    
+    init(sampleRate: Double) {
+        self.sampleRate = sampleRate
+    }
+    
+    func start() async throws {
+        let session = AVAudioSession.sharedInstance()
+
+        let hasPermission = await AVAudioApplication.requestRecordPermission()
+        guard hasPermission else {
+            throw RecordingError.permissionDenied
+        }
+        
+        try session.setCategory(.record, mode: .measurement)
+        try session.setActive(true)
+        
+        guard let cachesDir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first else {
+            return
+        }
+        let customFolderURL = cachesDir.appendingPathComponent("MyCustomCache")
+        
+        let url = customFolderURL.appendingPathComponent("recording_\(Date().timeIntervalSince1970).pcm")
+        let fileManager = FileManager.default
+        
+        if !fileManager.fileExists(atPath: customFolderURL.path) {
+            try fileManager.createDirectory(at: customFolderURL, withIntermediateDirectories: true, attributes: nil)
+        }
+        
+        fileManager.createFile(atPath: url.path, contents: nil, attributes: nil)
+        fileHandle = try FileHandle(forWritingTo: url)
+        outputURL = url
+        
+        // Force inputNode initialization before prepare
+        // Accessing it is enough — just don't use the format yet
+        _ = engine.inputNode
+        engine.prepare()
+        
+        let input = engine.inputNode
+        let format = input.outputFormat(forBus: 0)  // float32, 48000Hz native
+        print("format after prepare: \(format)")
+
+        input.installTap(onBus: 0, bufferSize: 4096, format: format) { [weak self] buffer, _ in
+            guard let self,
+                  let channelData = buffer.floatChannelData?[0] else { return }
+
+            let frameCount = Int(buffer.frameLength)
+            let int16Data = (0..<frameCount).map { i -> Int16 in
+                let clamped = max(-1.0, min(1.0, channelData[i]))
+                return Int16(clamped * 32767.0)
+            }
+
+            let data = int16Data.withUnsafeBytes { Data($0) }
+            self.fileHandle?.write(data)
+        }
+
+        
+        try engine.start()
+    }
+    
+    func stop() -> URL? {
+        engine.inputNode.removeTap(onBus: 0)
+        engine.stop()
+        fileHandle?.closeFile()
+        fileHandle = nil
+        return outputURL
+    }
+}
+
 private final class PCMRecorder {
     let sampleRate: Double
 
     private let engine = AVAudioEngine()
+    private let fileQueue = DispatchQueue(label: "com.codex.FigmaTemplateApp.debugRecording")
     private var converter: AVAudioConverter?
     private var outputFormat: AVAudioFormat?
+    private var debugFileHandle: FileHandle?
+    private var debugFileURL: URL?
 
     init(sampleRate: Double) {
         self.sampleRate = sampleRate
@@ -420,9 +500,16 @@ private final class PCMRecorder {
         try session.setPreferredSampleRate(sampleRate)
         try session.setPreferredIOBufferDuration(0.02)
         try session.setActive(true)
-
+        
+        // Force inputNode initialization before prepare
+        // Accessing it is enough — just don't use the format yet
+        _ = engine.inputNode
+        engine.prepare()
+        
         let input = engine.inputNode
-        let inputFormat = input.outputFormat(forBus: 0)
+        let inputFormat = input.outputFormat(forBus: 0)  // float32, 48000Hz native
+        print("format after prepare: \(inputFormat)")
+
         guard let outputFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: sampleRate, channels: 1, interleaved: false),
               let converter = AVAudioConverter(from: inputFormat, to: outputFormat) else {
             throw RecordingError.unsupportedFormat
@@ -430,17 +517,18 @@ private final class PCMRecorder {
 
         self.converter = converter
         self.outputFormat = outputFormat
+        try prepareDebugFile()
 
         input.removeTap(onBus: 0)
-        input.installTap(onBus: 0, bufferSize: 1024, format: inputFormat) { [weak self] buffer, _ in
+        input.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) { [weak self] buffer, _ in
             guard let self,
                   let converter = self.converter,
                   let outputFormat = self.outputFormat else { return }
-
+            
             let ratio = outputFormat.sampleRate / buffer.format.sampleRate
             let frameCapacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio) + 8
             guard let convertedBuffer = AVAudioPCMBuffer(pcmFormat: outputFormat, frameCapacity: frameCapacity) else { return }
-
+            
             var didProvideInput = false
             var conversionError: NSError?
             converter.convert(to: convertedBuffer, error: &conversionError) { _, status in
@@ -448,26 +536,41 @@ private final class PCMRecorder {
                     status.pointee = .noDataNow
                     return nil
                 }
-
+                
                 didProvideInput = true
                 status.pointee = .haveData
                 return buffer
             }
-
+            
             guard conversionError == nil, convertedBuffer.frameLength > 0 else { return }
-            onPCM(Self.floatBufferToPCM16(convertedBuffer))
+            let pcmData = Self.floatBufferToPCM16(convertedBuffer)
+            self.writeDebugPCM(pcmData)
+            onPCM(pcmData)
         }
 
-        engine.prepare()
         try engine.start()
     }
 
-    func stop() {
+    @discardableResult
+    func stop() -> URL? {
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
         converter = nil
         outputFormat = nil
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+
+        let savedURL = debugFileURL
+        fileQueue.sync {
+            try? debugFileHandle?.close()
+            debugFileHandle = nil
+        }
+        debugFileURL = nil
+
+        if let savedURL {
+            print("Saved debug recording to \(savedURL.path)")
+        }
+
+        return savedURL
     }
 
     private static func floatBufferToPCM16(_ buffer: AVAudioPCMBuffer) -> Data {
@@ -480,6 +583,24 @@ private final class PCMRecorder {
             withUnsafeBytes(of: &intSample) { data.append(contentsOf: $0) }
         }
         return data
+    }
+
+    private func prepareDebugFile() throws {
+        let fileName = "biztrip-recording-\(Int(Date().timeIntervalSince1970)).pcm"
+        let fileURL = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
+
+        FileManager.default.createFile(atPath: fileURL.path, contents: nil)
+        debugFileHandle = try FileHandle(forWritingTo: fileURL)
+        debugFileURL = fileURL
+        print("Saving debug recording to \(fileURL.path)")
+    }
+
+    private func writeDebugPCM(_ data: Data) {
+        guard !data.isEmpty else { return }
+
+        fileQueue.async { [weak self] in
+            self?.debugFileHandle?.write(data)
+        }
     }
 
     private func requestRecordPermission(session: AVAudioSession) async -> Bool {

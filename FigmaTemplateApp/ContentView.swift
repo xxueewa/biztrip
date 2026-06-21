@@ -1,12 +1,10 @@
 import AVFoundation
 import SwiftUI
 import Accelerate
-import Charts
 import Combine
 
 enum Constants {
     static let sampleAmount: Int = 200
-    static let downsampleFactor = 8
     static let magnitudeLimit: Float = 100
 }
 struct ContentView: View {
@@ -16,84 +14,104 @@ struct ContentView: View {
         return CGFloat(min(max(peak / Constants.magnitudeLimit, 0), 1))
     }
 
-    private let chartGradient = LinearGradient(
-        gradient: Gradient(colors: [
-            Color(red: 0.08, green: 0.12, blue: 0.16),
-            Color(red: 0.12, green: 0.55, blue: 0.46),
-            Color(red: 0.48, green: 0.78, blue: 0.68)
-        ]),
-        startPoint: .leading,
-        endPoint: .trailing
-    )
+    private var responseLines: [String] {
+        let parts = monitor.responseText
+            .components(separatedBy: ". ")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        return parts.enumerated().map { index, line in
+            guard index < parts.count - 1, !line.hasSuffix(".") else { return line }
+            return line + "."
+        }
+    }
 
     var body: some View {
-        VStack(spacing: 24) {
-            VStack(spacing: 8) {
-                Text("Voice Session")
-                    .font(.system(size: 28, weight: .semibold))
-                    .foregroundStyle(Color(red: 0.08, green: 0.09, blue: 0.10))
+        VStack(spacing: 14) {
+                HStack(alignment: .firstTextBaseline) {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("Voice Session")
+                            .font(.system(size: 28, weight: .semibold))
+                            .foregroundStyle(Color(red: 0.08, green: 0.09, blue: 0.10))
 
-                Text(monitor.isMonitoring ? "Listening" : "Ready")
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundStyle(.secondary)
-            }
-            .padding(.top, 8)
-            
-            Chart(monitor.downsampleMagnitudes.indices, id: \.self) {index in
-                LineMark(
-                    x: .value("Frequency", index * Constants.downsampleFactor),
-                    y: .value("Magnitude", monitor.downsampleMagnitudes[index])
-                )
-                
-                .interpolationMethod(.catmullRom)
-                .lineStyle(StrokeStyle(lineWidth: 3))
-                .foregroundStyle(chartGradient)
-            }
-            .chartYScale(domain: 0...max(monitor.fftMagnitudes.max() ?? 0, Constants.magnitudeLimit))
-            .chartXAxis(.hidden)
-            .chartYAxis(.hidden)
-            .frame(height: 300)
-            .padding()
-            .background(Color.white)
-            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .stroke(Color.black.opacity(0.06), lineWidth: 1)
-            }
-            .shadow(color: .black.opacity(0.05), radius: 18, y: 8)
-            
-            .animation(.easeOut, value: monitor.downsampleMagnitudes)
+                        Text(monitor.isMonitoring ? "Listening" : "Ready")
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundStyle(.secondary)
+                    }
 
-            Text(monitor.responseText)
-                .font(.system(size: 15, weight: .regular))
-                .lineSpacing(4)
-                .foregroundStyle(Color(red: 0.23, green: 0.25, blue: 0.27))
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(18)
-                .background(Color.white)
-                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 20, style: .continuous)
-                        .stroke(Color.black.opacity(0.06), lineWidth: 1)
+                    Spacer()
+
+                    Circle()
+                        .fill(monitor.isMonitoring ? Color(red: 0.88, green: 0.19, blue: 0.16) : Color(red: 0.12, green: 0.55, blue: 0.46))
+                        .frame(width: 10, height: 10)
                 }
-                .shadow(color: .black.opacity(0.04), radius: 14, y: 6)
-            
-            Spacer(minLength: 0)
-            
-            VoiceControlButton(
-                isRecording: monitor.isMonitoring,
-                activityLevel: activityLevel
-            ) {
-                if monitor.isMonitoring {
-                    monitor.stopMonitoring()
-                } else {
-                    Task { await monitor.startMonitoring() }
+
+                ResponsePanel(lines: responseLines)
+                    .frame(maxHeight: .infinity)
+                    .layoutPriority(1)
+
+                VoiceControlButton(
+                    isRecording: monitor.isMonitoring,
+                    activityLevel: activityLevel
+                ) {
+                    if monitor.isMonitoring {
+                        monitor.stopMonitoring()
+                    } else {
+                        Task { await monitor.startMonitoring() }
+                    }
                 }
-            }
         }
-        .padding(22)
+        .padding(.horizontal, 18)
+        .padding(.vertical, 12)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(red: 0.97, green: 0.97, blue: 0.95))
+    }
+}
+
+private struct ResponsePanel: View {
+    let lines: [String]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 9) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Color(red: 0.12, green: 0.55, blue: 0.46))
+
+                Text("Mock response")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(Color(red: 0.10, green: 0.11, blue: 0.12))
+            }
+            .padding(.bottom, 16)
+
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
+                        Text(line)
+                            .font(.system(size: 17, weight: .regular))
+                            .lineSpacing(5)
+                            .foregroundStyle(Color(red: 0.20, green: 0.22, blue: 0.24))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.vertical, 11)
+
+                        if index < lines.count - 1 {
+                            Divider()
+                                .overlay(Color.black.opacity(0.05))
+                        }
+                    }
+                }
+            }
+            .scrollIndicators(.visible)
+        }
+        .frame(maxWidth: .infinity, minHeight: 100, alignment: .topLeading)
+        .padding(20)
+        .background(Color.white)
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(Color.black.opacity(0.06), lineWidth: 1)
+        }
+        .shadow(color: .black.opacity(0.05), radius: 18, y: 8)
     }
 }
 
@@ -111,8 +129,15 @@ private struct VoiceControlButton: View {
             VStack(spacing: 14) {
                 ZStack {
                     Circle()
-                        .stroke(accentColor.opacity(0.08), lineWidth: 16 + activityLevel * 10)
-                        .frame(width: 116 + activityLevel * 18, height: 116 + activityLevel * 18)
+                        .fill(accentColor.opacity(isRecording ? 0.14 : 0.08))
+                        .frame(
+                            width: 112 + activityLevel * 44,
+                            height: 112 + activityLevel * 44
+                        )
+                        .shadow(
+                            color: accentColor.opacity(isRecording ? 0.18 : 0.08),
+                            radius: 14 + activityLevel * 12
+                        )
                         .animation(.easeOut(duration: 0.18), value: activityLevel)
 
                     Circle()
@@ -195,12 +220,6 @@ private final class AudioModel: ObservableObject {
     
     @Published var fftMagnitudes = [Float](repeating: 0, count: Constants.sampleAmount)
     @Published var responseText = "Tap Start and speak. The mock API consumes the live audio stream, drives the FFT visualization, and returns a dummy paragraph when you stop."
-    
-    var downsampleMagnitudes: [Float] {
-        fftMagnitudes.lazy.enumerated().compactMap { index, value in
-            index.isMultiple(of: Constants.downsampleFactor) ? value : nil
-        }
-    }
     
     func startMonitoring() async {
         guard !isMonitoring else { return }

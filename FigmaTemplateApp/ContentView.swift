@@ -14,18 +14,6 @@ struct ContentView: View {
         return CGFloat(min(max(peak / Constants.magnitudeLimit, 0), 1))
     }
 
-    private var responseLines: [String] {
-        let parts = monitor.responseText
-            .components(separatedBy: ". ")
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-
-        return parts.enumerated().map { index, line in
-            guard index < parts.count - 1, !line.hasSuffix(".") else { return line }
-            return line + "."
-        }
-    }
-
     var body: some View {
         VStack(spacing: 14) {
                 HStack(alignment: .firstTextBaseline) {
@@ -34,9 +22,9 @@ struct ContentView: View {
                             .font(.system(size: 28, weight: .semibold))
                             .foregroundStyle(Color(red: 0.08, green: 0.09, blue: 0.10))
 
-                        Text(monitor.isMonitoring ? "Listening" : "Ready")
-                            .font(.system(size: 15, weight: .medium))
-                            .foregroundStyle(.secondary)
+//                        Text(monitor.sessionStatus)
+//                            .font(.system(size: 15, weight: .medium))
+//                            .foregroundStyle(.secondary)
                     }
 
                     Spacer()
@@ -46,7 +34,10 @@ struct ContentView: View {
                         .frame(width: 10, height: 10)
                 }
 
-                ResponsePanel(lines: responseLines)
+                ResponsePanel(
+                    text: monitor.responseText,
+                    isStreaming: monitor.sessionStatus == "Receiving"
+                )
                     .frame(maxHeight: .infinity)
                     .layoutPriority(1)
 
@@ -69,7 +60,22 @@ struct ContentView: View {
 }
 
 private struct ResponsePanel: View {
-    let lines: [String]
+    let text: String
+    let isStreaming: Bool
+
+    private var formattedText: AttributedString {
+        let normalized = text.replacingOccurrences(
+            of: #"(?m)^(\d+)\.\s*\n\s*"#,
+            with: "$1. ",
+            options: .regularExpression
+        )
+
+        let options = AttributedString.MarkdownParsingOptions(
+            interpretedSyntax: .inlineOnlyPreservingWhitespace
+        )
+        return (try? AttributedString(markdown: normalized, options: options))
+            ?? AttributedString(normalized)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -78,39 +84,34 @@ private struct ResponsePanel: View {
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(Color(red: 0.12, green: 0.55, blue: 0.46))
 
-                Text("Server response")
+                Text("Liam")
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(Color(red: 0.10, green: 0.11, blue: 0.12))
+
+                Spacer()
+
+                if isStreaming {
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(Color(red: 0.12, green: 0.55, blue: 0.46))
+
+                    Text("Streaming")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(.secondary)
+                }
             }
             .padding(.bottom, 16)
 
-            ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 0) {
-                        ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
-                            Text(line)
-                                .font(.system(size: 17, weight: .regular))
-                                .lineSpacing(5)
-                                .foregroundStyle(Color(red: 0.20, green: 0.22, blue: 0.24))
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.vertical, 11)
-                                .id(index)
-
-                            if index < lines.count - 1 {
-                                Divider()
-                                    .overlay(Color.black.opacity(0.05))
-                            }
-                        }
-                    }
-                }
-                .scrollIndicators(.visible)
-                .onChange(of: lines) { _, updatedLines in
-                    guard let lastIndex = updatedLines.indices.last else { return }
-                    withAnimation(.easeOut(duration: 0.2)) {
-                        proxy.scrollTo(lastIndex, anchor: .bottom)
-                    }
-                }
+            ScrollView {
+                Text(formattedText)
+                    .font(.system(size: 17, weight: .regular))
+                    .lineSpacing(6)
+                    .foregroundStyle(Color(red: 0.20, green: 0.22, blue: 0.24))
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                    .textSelection(.enabled)
             }
+            .scrollIndicators(.visible)
+            .defaultScrollAnchor(.top)
         }
         .frame(maxWidth: .infinity, minHeight: 100, alignment: .topLeading)
         .padding(20)
@@ -217,20 +218,21 @@ private struct CenterRecordingScreen: View {
 private final class AudioModel: ObservableObject {
     static let shared = AudioModel()
     @Published var isMonitoring = false
+    @Published var sessionStatus = "Ready"
     private var audioEngine = AVAudioEngine()
     private let bufferSize = 8192
     private var fftSetup: OpaquePointer?
     private var audioContinuation: AsyncStream<[Float]>.Continuation?
     private var processingTask: Task<Void, Never>?
     private let audioAPI = WebSocketAudioAPI(
-        endpoint: URL(string: "ws://127.0.0.1:8000/chat/ws/audio/connect")!
+        endpoint: URL(string: "ws://127.0.0.1:8000/ws/audio")!
     )
     
     private init() {}
     
     
     @Published var fftMagnitudes = [Float](repeating: 0, count: Constants.sampleAmount)
-    @Published var responseText = "Tap Start and speak. Audio will stream to the local WebSocket server."
+    @Published var responseText = ""
 
     func startMonitoring() async {
         guard !isMonitoring else { return }
@@ -242,6 +244,7 @@ private final class AudioModel: ObservableObject {
         }
 
         processingTask?.cancel()
+        sessionStatus = "Connecting"
         responseText = "Connecting to the local audio server..."
 
         let session = AVAudioSession.sharedInstance()
@@ -290,6 +293,7 @@ private final class AudioModel: ObservableObject {
         do {
             try audioEngine.start()
             isMonitoring = true
+            sessionStatus = "Listening"
         } catch {
             print("Error starting audio engine: \(error.localizedDescription)")
             responseText = "Error starting audio engine: \(error.localizedDescription)"
@@ -307,6 +311,9 @@ private final class AudioModel: ObservableObject {
                 onText: { text in
                     await MainActor.run {
                         self.responseText = text
+                        if !text.hasPrefix("Connected to ") {
+                            self.sessionStatus = "Receiving"
+                        }
                     }
                 },
                 onSilenceDetected: {
@@ -320,6 +327,7 @@ private final class AudioModel: ObservableObject {
 
             await MainActor.run {
                 self.responseText = paragraph
+                self.sessionStatus = "Ready"
             }
         }
     }
@@ -334,7 +342,8 @@ private final class AudioModel: ObservableObject {
         audioContinuation?.finish()
         audioContinuation = nil
         
-        responseText = "Waiting for the server response..."
+        responseText = "Thinking..."
+        sessionStatus = "Waiting"
         
         if let setup = fftSetup {
             vDSP_DFT_DestroySetup(setup)
@@ -417,9 +426,11 @@ private final class WebSocketAudioAPI {
         var dialogueGate = DialogueGate()
         var sentEndOfStream = false
 
-        let receiver = Task { [endpoint] in
-            var latestText = "Connected to \(endpoint.absoluteString). Listening for dialogue..."
-            var streamedText = ""
+        let receiver = Task {
+            var latestText = "Listening..."
+            var assembler = TextStreamAssembler()
+            var lastPublishedText = ""
+            var lastPublishedAt = Date.distantPast
             await onText(latestText)
 
             while !Task.isCancelled {
@@ -431,23 +442,37 @@ private final class WebSocketAudioAPI {
 
                     let response = Self.parseResponse(text)
                     if let displayText = response.text, !displayText.isEmpty {
-                        if response.isDelta {
-                            streamedText += displayText
-                        } else {
-                            streamedText = displayText
+                        assembler.ingest(
+                            displayText,
+                            isDelta: response.isDelta
+                        )
+                        latestText = assembler.text
+
+                        let now = Date()
+                        let shouldPublish = response.isDone
+                            || now.timeIntervalSince(lastPublishedAt) >= 0.06
+                        if shouldPublish, latestText != lastPublishedText {
+                            await onText(latestText)
+                            lastPublishedText = latestText
+                            lastPublishedAt = now
                         }
-                        latestText = streamedText
-                        await onText(streamedText)
                     }
                     if response.isDone {
                         break
                     }
                 } catch {
-                    if !Task.isCancelled {
+                    if !assembler.text.isEmpty {
+                        latestText = assembler.text
+                    } else if !Task.isCancelled {
                         latestText = "WebSocket closed: \(error.localizedDescription)"
                     }
                     break
                 }
+            }
+
+            if !assembler.text.isEmpty, assembler.text != lastPublishedText {
+                latestText = assembler.text
+                await onText(latestText)
             }
 
             return latestText
@@ -525,11 +550,36 @@ private final class WebSocketAudioAPI {
             ?? (json["text"] as? String)
             ?? (json["message"] as? String)
             ?? (json["content"] as? String)
+            ?? (json["data"] as? String)
+            ?? (json["token"] as? String)
         let isDelta = delta != nil || type?.contains("delta") == true
         let isDone = type == "done"
             || type == "audio_end"
+            || type == "error"
+            || (type == "response_text" && !isDelta)
             || type?.contains(".done") == true
         return (text, isDelta, isDone)
+    }
+}
+
+private struct TextStreamAssembler {
+    private(set) var text = ""
+
+    mutating func ingest(_ fragment: String, isDelta: Bool) {
+        guard !fragment.isEmpty else { return }
+
+        if !isDelta {
+            text = fragment
+            return
+        }
+
+        // Some servers label cumulative snapshots as deltas. Replacing the
+        // current value avoids duplicated paragraphs in that protocol.
+        if fragment.count > text.count, fragment.hasPrefix(text) {
+            text = fragment
+        } else if fragment != text {
+            text += fragment
+        }
     }
 }
 

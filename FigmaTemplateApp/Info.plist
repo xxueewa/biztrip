@@ -6,6 +6,12 @@
 	<string>Figma Template</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>This app records your voice to send a request to the chat backend.</string>
+	<key>NSRemindersUsageDescription</key>
+	<string>This app adds assistant responses to Reminders when you tap the plus button.</string>
+	<key>NSRemindersFullAccessUsageDescription</key>
+	<string>This app adds assistant responses to Reminders when you tap the plus button.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>This app connects to your local audio processing server.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>

@@ -6,5 +6,5 @@ struct FigmaTemplateAppApp: App {
         WindowGroup {
             ContentView()
         }
-    }
+    }   
 }

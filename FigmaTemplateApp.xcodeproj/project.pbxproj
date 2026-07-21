@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		1D2D00072BD17A1000000001 /* FigmaTemplateAppApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D2D00052BD17A1000000001 /* FigmaTemplateAppApp.swift */; };
 		1D2D00082BD17A1000000001 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D2D00062BD17A1000000001 /* ContentView.swift */; };
+		1D2D00272BD17A1000000001 /* FigmaTemplateAppTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D2D00252BD17A1000000001 /* FigmaTemplateAppTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -16,6 +17,8 @@
 		1D2D00052BD17A1000000001 /* FigmaTemplateAppApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FigmaTemplateAppApp.swift; sourceTree = "<group>"; };
 		1D2D00062BD17A1000000001 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		1D2D00172BD17A1000000001 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		1D2D00222BD17A1000000001 /* FigmaTemplateAppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FigmaTemplateAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		1D2D00252BD17A1000000001 /* FigmaTemplateAppTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FigmaTemplateAppTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -26,13 +29,31 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		1D2D00282BD17A1000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXContainerItemProxy section */
+		1D2D002B2BD17A1000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 1D2D000D2BD17A1000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 1D2D000A2BD17A1000000001;
+			remoteInfo = FigmaTemplateApp;
+		};
+/* End PBXContainerItemProxy section */
 
 /* Begin PBXGroup section */
 		1D2D00032BD17A1000000001 /* Products */ = {
 			isa = PBXGroup;
 			children = (
 				1D2D00022BD17A1000000001 /* FigmaTemplateApp.app */,
+				1D2D00222BD17A1000000001 /* FigmaTemplateAppTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -51,8 +72,17 @@
 			isa = PBXGroup;
 			children = (
 				1D2D00042BD17A1000000001 /* FigmaTemplateApp */,
+				1D2D00242BD17A1000000001 /* FigmaTemplateAppTests */,
 				1D2D00032BD17A1000000001 /* Products */,
 			);
+			sourceTree = "<group>";
+		};
+		1D2D00242BD17A1000000001 /* FigmaTemplateAppTests */ = {
+			isa = PBXGroup;
+			children = (
+				1D2D00252BD17A1000000001 /* FigmaTemplateAppTests.swift */,
+			);
+			path = FigmaTemplateAppTests;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -75,6 +105,24 @@
 			productReference = 1D2D00022BD17A1000000001 /* FigmaTemplateApp.app */;
 			productType = "com.apple.product-type.application";
 		};
+		1D2D002A2BD17A1000000001 /* FigmaTemplateAppTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 1D2D00322BD17A1000000001 /* Build configuration list for PBXNativeTarget "FigmaTemplateAppTests" */;
+			buildPhases = (
+				1D2D00262BD17A1000000001 /* Sources */,
+				1D2D00282BD17A1000000001 /* Frameworks */,
+				1D2D00292BD17A1000000001 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				1D2D002C2BD17A1000000001 /* PBXTargetDependency */,
+			);
+			name = FigmaTemplateAppTests;
+			productName = FigmaTemplateAppTests;
+			productReference = 1D2D00222BD17A1000000001 /* FigmaTemplateAppTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -83,10 +131,14 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 1510;
-				LastUpgradeCheck = 2640;
+				LastUpgradeCheck = 2650;
 				TargetAttributes = {
 					1D2D000A2BD17A1000000001 = {
 						CreatedOnToolsVersion = 15.1;
+					};
+					1D2D002A2BD17A1000000001 = {
+						CreatedOnToolsVersion = 26.5;
+						TestTargetID = 1D2D000A2BD17A1000000001;
 					};
 				};
 			};
@@ -104,12 +156,20 @@
 			projectRoot = "";
 			targets = (
 				1D2D000A2BD17A1000000001 /* FigmaTemplateApp */,
+				1D2D002A2BD17A1000000001 /* FigmaTemplateAppTests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		1D2D000C2BD17A1000000001 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		1D2D00292BD17A1000000001 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -128,13 +188,64 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		1D2D00262BD17A1000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1D2D00272BD17A1000000001 /* FigmaTemplateAppTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		1D2D002C2BD17A1000000001 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 1D2D000A2BD17A1000000001 /* FigmaTemplateApp */;
+			targetProxy = 1D2D002B2BD17A1000000001 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin XCBuildConfiguration section */
+		1D2D00302BD17A1000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.codex.FigmaTemplateAppTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/FigmaTemplateApp.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/FigmaTemplateApp";
+			};
+			name = Debug;
+		};
+		1D2D00312BD17A1000000001 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.codex.FigmaTemplateAppTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/FigmaTemplateApp.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/FigmaTemplateApp";
+			};
+			name = Release;
+		};
 		1D2D00132BD17A1000000001 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "";
@@ -149,6 +260,7 @@
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.codex.FigmaTemplateApp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;
@@ -159,6 +271,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "";
@@ -173,6 +286,7 @@
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.codex.FigmaTemplateApp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;
@@ -212,6 +326,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = HKP6582PRD;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -274,6 +389,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = HKP6582PRD;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -300,6 +416,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		1D2D00322BD17A1000000001 /* Build configuration list for PBXNativeTarget "FigmaTemplateAppTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1D2D00302BD17A1000000001 /* Debug */,
+				1D2D00312BD17A1000000001 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		1D2D00102BD17A1000000001 /* Build configuration list for PBXProject "FigmaTemplateApp" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
